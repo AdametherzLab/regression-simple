@@ -1,0 +1,47 @@
+{
+  "name": "@adametherzlab/regression-simple",
+  "version": "0.1.0",
+  "description": "Linear + polynomial regression with prediction intervals and R-squared",
+  "type": "module",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "bun test",
+    "build": "bun build src/index.ts --outdir dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.5.0"
+  },
+  "keywords": [
+    "typescript",
+    "bun",
+    "regression",
+    "statistics",
+    "math",
+    "data-analysis"
+  ],
+  "author": "AdametherzLab",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AdametherzLab/regression-simple.git"
+  },
+  "homepage": "https://github.com/AdametherzLab/regression-simple#readme",
+  "bugs": {
+    "url": "https://github.com/AdametherzLab/regression-simple/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false
+}
