@@ -3,3 +3,7 @@ export type { DataPoint, RegressionOptions, PredictionInterval, RegressionResult
 
 import { performRegression } from './regression';
 export { performRegression };
+
+import { exportResults, exportResultsToFile } from './export';
+export { exportResults, exportResultsToFile };
+export type { ExportFormat, ExportOptions } from './export';
