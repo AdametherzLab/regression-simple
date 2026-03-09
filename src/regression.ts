@@ -102,56 +102,169 @@ export function performRegression(
   data: DataPoint[],
   options: RegressionOptions = {}
 ): RegressionResult {
-  const degree = options.degree ?? 1;
+  const model = options.model ?? 'polynomial';
+  const degree = options.degree ?? (model === 'polynomial' ? 1 : undefined);
+
+  if (model === 'exponential' || model === 'logarithmic') {
+    if (degree !== undefined && degree !== 1) {
+      throw new Error(`Degree must be 1 for ${model} regression`);
+    }
+  } else if (model === 'polynomial') {
+    if (!Number.isInteger(degree) || degree! < 1) {
+      throw new Error('Polynomial degree must be a positive integer');
+    }
+  }
+
   const confidenceLevel = options.confidenceLevel;
   const weightedData = data.map(({ x, y, weight = 1 }) => [x, y, weight] as const);
-  
-  if (weightedData.length <= degree + 1) {
-    throw new Error(`Insufficient data points for degree ${degree} regression`);
+
+  // Validate model-specific data requirements
+  if (model === 'exponential') {
+    for (const [x, y] of weightedData) {
+      if (y <= 0) throw new Error('Exponential regression requires positive y values');
+    }
+  }
+  if (model === 'logarithmic') {
+    for (const [x] of weightedData) {
+      if (x <= 0) throw new Error('Logarithmic regression requires positive x values');
+    }
   }
 
-  const xValues: number[] = [];
+  // Build design matrix and transformed Y values
   const X: number[][] = [];
   const Y: number[] = [];
-  
+  const xValues: number[] = [];
+
   for (const [x, y, weight] of weightedData) {
-    xValues.push(x);
+    let xVal = x;
+    let yVal = y;
+
+    switch (model) {
+      case 'exponential':
+        yVal = Math.log(y);
+        break;
+      case 'logarithmic':
+        xVal = Math.log(x);
+        break;
+    }
+
     const sqrtW = Math.sqrt(weight);
-    const row = Array.from({ length: degree + 1 }, (_, d) => Math.pow(x, d) * sqrtW);
+    let row: number[];
+
+    switch (model) {
+      case 'exponential':
+      case 'logarithmic':
+        row = [sqrtW, xVal * sqrtW];
+        break;
+      default: {
+        const effectiveDegree = degree!;
+        row = Array.from({ length: effectiveDegree + 1 }, (_, d) => Math.pow(xVal, d) * sqrtW);
+        break;
+      }
+    }
+
+    xValues.push(xVal);
     X.push(row);
-    Y.push(y * sqrtW);
+    Y.push(yVal * sqrtW);
   }
 
+  if (X.length <= X[0].length) {
+    throw new Error(`Insufficient data points for ${model} regression`);
+  }
+
+  // Solve linear system
   const XT = transpose(X);
   const XTX = multiply(XT, X);
   const XTY = multiplyMatrixVector(XT, Y);
-  const coefficients = solveLinearSystem(XTX, XTY);
+  let originalCoefficients: number[];
+  try {
+    originalCoefficients = solveLinearSystem(XTX, XTY);
+  } catch (error) {
+    if (error.message.includes('Singular matrix')) {
+      throw new Error('Matrix is singular - data may be collinear');
+    }
+    throw error;
+  }
 
-  const predictions = X.map(row => dotProduct(row, coefficients));
-  const residuals = Y.map((y, i) => y - predictions[i]);
-  const sse = residuals.reduce((sum, r) => sum + r ** 2, 0);
-  const yMean = Y.reduce((sum, y) => sum + y, 0) / Y.length;
-  const sst = Y.reduce((sum, y) => sum + (y - yMean) ** 2, 0);
+  // Adjust coefficients for exponential model
+  let coefficients = originalCoefficients.slice();
+  if (model === 'exponential') {
+    coefficients = [Math.exp(originalCoefficients[0]), originalCoefficients[1]];
+  }
+
+  // Calculate predictions in original scale
+  const predictions = data.map((dp) => {
+    switch (model) {
+      case 'exponential':
+        return coefficients[0] * Math.exp(coefficients[1] * dp.x);
+      case 'logarithmic':
+        return coefficients[0] + coefficients[1] * Math.log(dp.x);
+      default:
+        return coefficients.reduce((sum, coeff, d) => sum + coeff * Math.pow(dp.x, d), 0);
+    }
+  });
+
+  // Compute R-squared
+  const weights = data.map(dp => dp.weight ?? 1);
+  const weightedYSum = data.reduce((sum, dp, i) => sum + dp.y * weights[i], 0);
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  const weightedMeanY = weightedYSum / totalWeight;
+
+  const sse = data.reduce((sum, dp, i) => {
+    const residual = dp.y - predictions[i];
+    return sum + weights[i] * residual ** 2;
+  }, 0);
+
+  const sst = data.reduce((sum, dp, i) => {
+    return sum + weights[i] * (dp.y - weightedMeanY) ** 2;
+  }, 0);
+
   const rSquared = sst === 0 ? 1 : 1 - sse / sst;
 
+  // Calculate prediction intervals
   let predictionIntervals: PredictionInterval[] | undefined;
   if (confidenceLevel !== undefined) {
-    const sigmaSquared = sse / (Y.length - coefficients.length);
+    const sigmaSquared = sse / (data.length - coefficients.length);
     const XTXInverse = invertMatrix(XTX);
     const criticalValue = probit(1 - (1 - confidenceLevel) / 2);
 
-    predictionIntervals = xValues.map(x => {
-      const designRow = Array.from({ length: degree + 1 }, (_, d) => Math.pow(x, d));
+    predictionIntervals = xValues.map((xVal, i) => {
+      let designRow: number[];
+      switch (model) {
+        case 'exponential':
+          designRow = [1, data[i].x];
+          break;
+        case 'logarithmic':
+          designRow = [1, xVal];
+          break;
+        default:
+          designRow = Array.from({ length: coefficients.length }, (_, d) => Math.pow(xVal, d));
+      }
+
       const varianceFactor = dotProduct(
         multiplyMatrixVector(XTXInverse, designRow),
         designRow
       );
       const se = Math.sqrt(sigmaSquared * (1 + varianceFactor));
-      const yHat = dotProduct(designRow, coefficients);
-      const margin = criticalValue * se;
-      return { lower: yHat - margin, upper: yHat + margin };
+
+      const yHatLinear = dotProduct(designRow, model === 'exponential' ? originalCoefficients : coefficients);
+      
+      let lower, upper;
+      if (model === 'exponential') {
+        lower = Math.exp(yHatLinear - criticalValue * se);
+        upper = Math.exp(yHatLinear + criticalValue * se);
+      } else {
+        lower = yHatLinear - criticalValue * se;
+        upper = yHatLinear + criticalValue * se;
+      }
+
+      return { lower, upper };
     });
   }
 
-  return { coefficients, rSquared, predictionIntervals };
+  return {
+    coefficients,
+    rSquared,
+    predictionIntervals
+  };
 }

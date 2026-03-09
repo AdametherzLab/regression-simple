@@ -7,6 +7,7 @@ export interface DataPoint {
 export interface RegressionOptions {
   readonly degree?: number;
   readonly confidenceLevel?: number;
+  readonly model?: 'linear' | 'polynomial' | 'exponential' | 'logarithmic';
 }
 
 export interface PredictionInterval {
