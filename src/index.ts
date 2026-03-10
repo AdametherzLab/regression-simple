@@ -7,3 +7,7 @@ export { performRegression };
 import { exportResults, exportResultsToFile } from './export';
 export { exportResults, exportResultsToFile };
 export type { ExportFormat, ExportOptions } from './export';
+
+import { plotRegression } from './plotter';
+export { plotRegression };
+export type { PlotterOptions } from './plotter';

@@ -313,6 +313,7 @@ export function performRegression(
   return {
     coefficients,
     rSquared,
-    predictionIntervals
+    predictionIntervals,
+    model
   };
 }

@@ -19,6 +19,8 @@ export interface RegressionResult {
   readonly coefficients: readonly number[];
   readonly rSquared: number;
   readonly predictionIntervals?: readonly PredictionInterval[];
+  /** The regression model type used to fit the data */
+  readonly model?: string;
 }
 
 export type WeightedArray = readonly (readonly [number, number, number])[];
