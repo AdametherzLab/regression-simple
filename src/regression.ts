@@ -118,6 +118,13 @@ export function performRegression(
   const confidenceLevel = options.confidenceLevel;
   const weightedData = data.map(({ x, y, weight = 1 }) => [x, y, weight] as const);
 
+  // Validate weights
+  for (const [x, y, weight] of weightedData) {
+    if (weight < 0) {
+      throw new Error('Weights must be non-negative');
+    }
+  }
+
   // Validate model-specific data requirements
   if (model === 'exponential') {
     for (const [x, y] of weightedData) {
