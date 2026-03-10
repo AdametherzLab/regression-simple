@@ -105,7 +105,7 @@ export function performRegression(
   const model = options.model ?? 'polynomial';
   const degree = options.degree ?? (model === 'polynomial' ? 1 : undefined);
 
-  if (model === 'exponential' || model === 'logarithmic') {
+  if (model === 'exponential' || model === 'logarithmic' || model === 'power' || model === 'logistic') {
     if (degree !== undefined && degree !== 1) {
       throw new Error(`Degree must be 1 for ${model} regression`);
     }
@@ -129,6 +129,17 @@ export function performRegression(
       if (x <= 0) throw new Error('Logarithmic regression requires positive x values');
     }
   }
+  if (model === 'power') {
+    for (const [x, y] of weightedData) {
+      if (x <= 0) throw new Error('Power regression requires positive x values');
+      if (y <= 0) throw new Error('Power regression requires positive y values');
+    }
+  }
+  if (model === 'logistic') {
+    for (const [x, y] of weightedData) {
+      if (y <= 0 || y >= 1) throw new Error('Logistic regression requires y values between 0 and 1');
+    }
+  }
 
   // Build design matrix and transformed Y values
   const X: number[][] = [];
@@ -146,6 +157,13 @@ export function performRegression(
       case 'logarithmic':
         xVal = Math.log(x);
         break;
+      case 'power':
+        xVal = Math.log(x);
+        yVal = Math.log(y);
+        break;
+      case 'logistic':
+        yVal = Math.log(y / (1 - y));
+        break;
     }
 
     const sqrtW = Math.sqrt(weight);
@@ -154,6 +172,8 @@ export function performRegression(
     switch (model) {
       case 'exponential':
       case 'logarithmic':
+      case 'power':
+      case 'logistic':
         row = [sqrtW, xVal * sqrtW];
         break;
       default: {
@@ -186,9 +206,12 @@ export function performRegression(
     throw error;
   }
 
-  // Adjust coefficients for exponential model
+  // Adjust coefficients for specific models
   let coefficients = originalCoefficients.slice();
   if (model === 'exponential') {
+    coefficients = [Math.exp(originalCoefficients[0]), originalCoefficients[1]];
+  }
+  if (model === 'power') {
     coefficients = [Math.exp(originalCoefficients[0]), originalCoefficients[1]];
   }
 
@@ -199,6 +222,12 @@ export function performRegression(
         return coefficients[0] * Math.exp(coefficients[1] * dp.x);
       case 'logarithmic':
         return coefficients[0] + coefficients[1] * Math.log(dp.x);
+      case 'power':
+        return coefficients[0] * Math.pow(dp.x, coefficients[1]);
+      case 'logistic': {
+        const linear = coefficients[0] + coefficients[1] * dp.x;
+        return 1 / (1 + Math.exp(-linear));
+      }
       default:
         return coefficients.reduce((sum, coeff, d) => sum + coeff * Math.pow(dp.x, d), 0);
     }
@@ -235,7 +264,11 @@ export function performRegression(
           designRow = [1, data[i].x];
           break;
         case 'logarithmic':
+        case 'power':
           designRow = [1, xVal];
+          break;
+        case 'logistic':
+          designRow = [1, data[i].x];
           break;
         default:
           designRow = Array.from({ length: coefficients.length }, (_, d) => Math.pow(xVal, d));
@@ -247,12 +280,20 @@ export function performRegression(
       );
       const se = Math.sqrt(sigmaSquared * (1 + varianceFactor));
 
-      const yHatLinear = dotProduct(designRow, model === 'exponential' ? originalCoefficients : coefficients);
+      let yHatLinear;
+      if (model === 'exponential' || model === 'power') {
+        yHatLinear = dotProduct(designRow, originalCoefficients);
+      } else {
+        yHatLinear = dotProduct(designRow, coefficients);
+      }
       
       let lower, upper;
-      if (model === 'exponential') {
+      if (model === 'exponential' || model === 'power') {
         lower = Math.exp(yHatLinear - criticalValue * se);
         upper = Math.exp(yHatLinear + criticalValue * se);
+      } else if (model === 'logistic') {
+        lower = 1 / (1 + Math.exp(-(yHatLinear - criticalValue * se)));
+        upper = 1 / (1 + Math.exp(-(yHatLinear + criticalValue * se)));
       } else {
         lower = yHatLinear - criticalValue * se;
         upper = yHatLinear + criticalValue * se;

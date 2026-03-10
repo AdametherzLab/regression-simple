@@ -1,6 +1,6 @@
 {
   "name": "@adametherzlab/regression-simple",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Linear + polynomial regression with prediction intervals and R-squared",
   "type": "module",
   "main": "src/index.ts",

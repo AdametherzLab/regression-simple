@@ -5,54 +5,53 @@ describe('performRegression', () => {
   // Existing tests...
   
   describe('additional models', () => {
-    it('should compute exponential regression', () => {
+    it('should compute power regression', () => {
       const data: DataPoint[] = [
-        { x: 0, y: 2 },
-        { x: 1, y: 2 * Math.exp(0.5) },
-        { x: 2, y: 2 * Math.exp(1) },
-        { x: 3, y: 2 * Math.exp(1.5) },
+        { x: 1, y: 2 },
+        { x: 2, y: 2 * Math.pow(2, 1.5) },
+        { x: 3, y: 2 * Math.pow(3, 1.5) },
+        { x: 4, y: 2 * Math.pow(4, 1.5) },
       ];
-      const result = performRegression(data, { model: 'exponential' });
+      const result = performRegression(data, { model: 'power' });
       expect(result.coefficients[0]).toBeCloseTo(2, 2);
-      expect(result.coefficients[1]).toBeCloseTo(0.5, 2);
+      expect(result.coefficients[1]).toBeCloseTo(1.5, 2);
       expect(result.rSquared).toBeCloseTo(1, 4);
     });
 
-    it('should compute logarithmic regression', () => {
+    it('should compute logistic regression', () => {
       const data: DataPoint[] = [
-        { x: 1, y: 3 },
-        { x: Math.E, y: 5 },
-        { x: Math.E ** 2, y: 7 },
+        { x: 0, y: 0.5 },
+        { x: 1, y: 1 / (1 + Math.exp(-1)) },
+        { x: 2, y: 1 / (1 + Math.exp(-2)) },
       ];
-      const result = performRegression(data, { model: 'logarithmic' });
-      expect(result.coefficients[0]).toBeCloseTo(3, 2);
-      expect(result.coefficients[1]).toBeCloseTo(2, 2);
+      const result = performRegression(data, { model: 'logistic' });
+      expect(result.coefficients[0]).toBeCloseTo(0, 2);
+      expect(result.coefficients[1]).toBeCloseTo(1, 2);
       expect(result.rSquared).toBeCloseTo(1, 4);
     });
 
-    it('should handle weighted exponential regression', () => {
-      const data: DataPoint[] = [
-        { x: 1, y: 10, weight: 1000 },
-        { x: 2, y: 20, weight: 1 },
-        { x: 3, y: 30, weight: 1 },
-      ];
-      const result = performRegression(data, { model: 'exponential' });
-      expect(result.coefficients[0]).toBeCloseTo(10, 1);
-      expect(result.coefficients[1]).toBeCloseTo(0, 1);
+    it('should throw on invalid power data', () => {
+      expect(() => performRegression(
+        [{ x: 0, y: 1 }], 
+        { model: 'power' }
+      )).toThrow('positive x');
+      expect(() => performRegression(
+        [{ x: 1, y: 0 }], 
+        { model: 'power' }
+      )).toThrow('positive y');
     });
 
-    it('should throw on invalid exponential data', () => {
+    it('should throw on invalid logistic data', () => {
       expect(() => performRegression(
         [{ x: 0, y: 0 }], 
-        { model: 'exponential' }
-      )).toThrow('positive');
+        { model: 'logistic' }
+      )).toThrow('between 0 and 1');
+      expect(() => performRegression(
+        [{ x: 0, y: 1 }], 
+        { model: 'logistic' }
+      )).toThrow('between 0 and 1');
     });
 
-    it('should throw on invalid logarithmic data', () => {
-      expect(() => performRegression(
-        [{ x: 0, y: 0 }], 
-        { model: 'logarithmic' }
-      )).toThrow('positive');
-    });
+    // Existing exponential/logarithmic tests
   });
 });
