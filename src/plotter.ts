@@ -11,12 +11,17 @@ export interface PlotterOptions {
   readonly showPredictionIntervals?: boolean;
   /** Number of points to use for the regression curve (default: 100) */
   readonly curveResolution?: number;
+  /** Enable zooming with mouse wheel (default: true) */
+  readonly enableZoom?: boolean;
+  /** Enable panning with mouse drag (default: true) */
+  readonly enablePan?: boolean;
 }
 
 /**
  * Generates an interactive HTML plot of the regression results.
  * Creates a standalone HTML file with Chart.js visualization showing
  * data points, fitted curve, and optional prediction intervals.
+ * Includes interactive zooming (mouse wheel/pinch) and panning (drag).
  * 
  * @param data - Original data points
  * @param result - Regression result from performRegression
@@ -27,7 +32,7 @@ export interface PlotterOptions {
  * 
  * const data = [{ x: 1, y: 2 }, { x: 2, y: 4 }, { x: 3, y: 6 }];
  * const result = performRegression(data, { model: 'linear' });
- * const html = plotRegression(data, result, { title: 'Linear Fit' });
+ * const html = plotRegression(data, result, { title: 'Linear Fit', enableZoom: true });
  * await Bun.write('plot.html', html);
  * 
  */
@@ -41,7 +46,9 @@ export function plotRegression(
     width = 800,
     height = 600,
     showPredictionIntervals = result.predictionIntervals !== undefined,
-    curveResolution = 100
+    curveResolution = 100,
+    enableZoom = true,
+    enablePan = true
   } = options;
 
   if (data.length === 0) {
@@ -126,7 +133,9 @@ export function plotRegression(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${title}</title>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -158,6 +167,28 @@ export function plotRegression(
         .stats-row {
             margin: 5px 0;
         }
+        .controls {
+            margin-bottom: 15px;
+            text-align: right;
+        }
+        .controls button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .controls button:hover {
+            background: #45a049;
+        }
+        .help-text {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
         canvas {
             max-width: 100%;
         }
@@ -166,7 +197,13 @@ export function plotRegression(
 <body>
     <div class="container">
         <h1>${title}</h1>
+        <div class="controls">
+            <button onclick="resetZoom()">Reset Zoom</button>
+        </div>
         <canvas id="regressionChart" width="${width}" height="${height}"></canvas>
+        <div class="help-text">
+            💡 Tip: Use mouse wheel to zoom, drag to pan. Click "Reset Zoom" to return to original view.
+        </div>
         <div class="stats">
             <div class="stats-row"><strong>Model:</strong> ${result.model || 'polynomial'}</div>
             <div class="stats-row"><strong>R²:</strong> ${result.rSquared.toFixed(6)}</div>
@@ -177,7 +214,7 @@ export function plotRegression(
         const ctx = document.getElementById('regressionChart').getContext('2d');
         const chartData = ${JSON.stringify(chartData)};
         
-        new Chart(ctx, {
+        const chart = new Chart(ctx, {
             type: 'scatter',
             data: chartData,
             options: {
@@ -210,10 +247,37 @@ export function plotRegression(
                     tooltip: {
                         mode: 'index',
                         intersect: false
+                    },
+                    zoom: {
+                        pan: {
+                            enabled: ${enablePan},
+                            mode: 'xy',
+                            modifierKey: null
+                        },
+                        zoom: {
+                            wheel: {
+                                enabled: ${enableZoom}
+                            },
+                            pinch: {
+                                enabled: ${enableZoom}
+                            },
+                            mode: 'xy',
+                            drag: {
+                                enabled: false
+                            }
+                        },
+                        limits: {
+                            x: {min: 'original', max: 'original'},
+                            y: {min: 'original', max: 'original'}
+                        }
                     }
                 }
             }
         });
+
+        function resetZoom() {
+            chart.resetZoom();
+        }
     </script>
 </body>
 </html>`;

@@ -80,4 +80,79 @@ describe('plotRegression', () => {
     expect(html).toContain('Coefficients:');
     expect(html).toContain(result.rSquared.toFixed(6));
   });
+
+  describe('interactive features', () => {
+    it('should include Hammer.js for gesture support', () => {
+      const data: DataPoint[] = [{ x: 1, y: 2 }, { x: 2, y: 4 }];
+      const result = performRegression(data, { model: 'linear' });
+      const html = plotRegression(data, result);
+      
+      expect(html).toContain('hammerjs');
+      expect(html).toContain('hammer.min.js');
+    });
+
+    it('should include Chart.js zoom plugin', () => {
+      const data: DataPoint[] = [{ x: 1, y: 2 }, { x: 2, y: 4 }];
+      const result = performRegression(data, { model: 'linear' });
+      const html = plotRegression(data, result);
+      
+      expect(html).toContain('chartjs-plugin-zoom');
+      expect(html).toContain('chartjs-plugin-zoom.min.js');
+    });
+
+    it('should enable zoom by default', () => {
+      const data: DataPoint[] = [{ x: 1, y: 2 }, { x: 2, y: 4 }];
+      const result = performRegression(data, { model: 'linear' });
+      const html = plotRegression(data, result);
+      
+      expect(html).toContain('"enabled": true');
+      expect(html).toContain('wheel');
+      expect(html).toContain('pinch');
+    });
+
+    it('should enable pan by default', () => {
+      const data: DataPoint[] = [{ x: 1, y: 2 }, { x: 2, y: 4 }];
+      const result = performRegression(data, { model: 'linear' });
+      const html = plotRegression(data, result);
+      
+      expect(html).toContain('pan');
+      expect(html).toContain('mode: \'xy\'');
+    });
+
+    it('should include reset zoom button', () => {
+      const data: DataPoint[] = [{ x: 1, y: 2 }, { x: 2, y: 4 }];
+      const result = performRegression(data, { model: 'linear' });
+      const html = plotRegression(data, result);
+      
+      expect(html).toContain('Reset Zoom');
+      expect(html).toContain('resetZoom()');
+    });
+
+    it('should include zoom instructions', () => {
+      const data: DataPoint[] = [{ x: 1, y: 2 }, { x: 2, y: 4 }];
+      const result = performRegression(data, { model: 'linear' });
+      const html = plotRegression(data, result);
+      
+      expect(html).toContain('mouse wheel');
+      expect(html).toContain('drag');
+    });
+
+    it('should allow disabling zoom', () => {
+      const data: DataPoint[] = [{ x: 1, y: 2 }, { x: 2, y: 4 }];
+      const result = performRegression(data, { model: 'linear' });
+      const html = plotRegression(data, result, { enableZoom: false });
+      
+      // Should contain the zoom config but with enabled: false
+      expect(html).toContain('"enabled": false');
+    });
+
+    it('should allow disabling pan', () => {
+      const data: DataPoint[] = [{ x: 1, y: 2 }, { x: 2, y: 4 }];
+      const result = performRegression(data, { model: 'linear' });
+      const html = plotRegression(data, result, { enablePan: false });
+      
+      // Should contain pan config with enabled: false
+      expect(html).toContain('pan');
+    });
+  });
 });
