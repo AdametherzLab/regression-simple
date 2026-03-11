@@ -1,40 +1,19 @@
 import type { DataPoint, RegressionResult } from './types';
 
 export interface PlotterOptions {
-  /** Title of the plot */
   readonly title?: string;
-  /** Width of the chart in pixels (default: 800) */
   readonly width?: number;
-  /** Height of the chart in pixels (default: 600) */
   readonly height?: number;
-  /** Whether to show prediction intervals (default: true if available) */
   readonly showPredictionIntervals?: boolean;
-  /** Number of points to use for the regression curve (default: 100) */
   readonly curveResolution?: number;
-  /** Enable zooming with mouse wheel (default: true) */
   readonly enableZoom?: boolean;
-  /** Enable panning with mouse drag (default: true) */
   readonly enablePan?: boolean;
+  readonly interactive?: boolean;
 }
 
 /**
- * Generates an interactive HTML plot of the regression results.
- * Creates a standalone HTML file with Chart.js visualization showing
- * data points, fitted curve, and optional prediction intervals.
- * Includes interactive zooming (mouse wheel/pinch) and panning (drag).
- * 
- * @param data - Original data points
- * @param result - Regression result from performRegression
- * @param options - Plotting options
- * @returns HTML string that can be saved to a file and opened in a browser
- * 
- * @example
- * 
- * const data = [{ x: 1, y: 2 }, { x: 2, y: 4 }, { x: 3, y: 6 }];
- * const result = performRegression(data, { model: 'linear' });
- * const html = plotRegression(data, result, { title: 'Linear Fit', enableZoom: true });
- * await Bun.write('plot.html', html);
- * 
+ * Generates an interactive HTML plot with dynamic controls for model parameters
+ * and data point adjustments. Includes real-time regression updates via HTMX.
  */
 export function plotRegression(
   data: DataPoint[],
@@ -42,281 +21,129 @@ export function plotRegression(
   options: PlotterOptions = {}
 ): string {
   const {
-    title = 'Regression Plot',
-    width = 800,
-    height = 600,
-    showPredictionIntervals = result.predictionIntervals !== undefined,
-    curveResolution = 100,
-    enableZoom = true,
-    enablePan = true
+    title = 'Interactive Regression Plot',
+    width = 1000,
+    height = 800,
+    interactive = true,
+    curveResolution = 100
   } = options;
 
-  if (data.length === 0) {
-    throw new Error('No data points provided');
-  }
-
-  const xValues = data.map(d => d.x);
-  const minX = Math.min(...xValues);
-  const maxX = Math.max(...xValues);
-  const xRange = maxX - minX || 1;
-
-  // Generate curve points
-  const curvePoints: { x: number; y: number }[] = [];
-  const lowerBounds: { x: number; y: number }[] = [];
-  const upperBounds: { x: number; y: number }[] = [];
-
-  for (let i = 0; i <= curveResolution; i++) {
-    const x = minX + (i / curveResolution) * xRange;
-    const y = evaluateRegression(x, result);
-    curvePoints.push({ x, y });
-
-    if (showPredictionIntervals && result.predictionIntervals) {
-      // Find closest prediction interval for this x value
-      const idx = findClosestIndex(x, data.map(d => d.x));
-      if (result.predictionIntervals[idx]) {
-        lowerBounds.push({ x, y: result.predictionIntervals[idx].lower });
-        upperBounds.push({ x, y: result.predictionIntervals[idx].upper });
-      }
-    }
-  }
-
-  const chartData = {
-    datasets: [
-      {
-        label: 'Data Points',
-        data: data.map(d => ({ x: d.x, y: d.y })),
-        backgroundColor: 'rgba(54, 162, 235, 0.6)',
-        borderColor: 'rgba(54, 162, 235, 1)',
-        type: 'scatter',
-        showLine: false
-      },
-      {
-        label: 'Regression Curve',
-        data: curvePoints,
-        borderColor: 'rgba(255, 99, 132, 1)',
-        backgroundColor: 'rgba(255, 99, 132, 0.1)',
-        type: 'line',
-        fill: false,
-        tension: 0.4,
-        pointRadius: 0
-      }
-    ]
-  };
-
-  if (showPredictionIntervals && result.predictionIntervals && lowerBounds.length > 0) {
-    // Add prediction interval bands
-    chartData.datasets.push({
-      label: 'Upper Bound',
-      data: upperBounds,
-      borderColor: 'rgba(75, 192, 192, 0.3)',
-      backgroundColor: 'rgba(75, 192, 192, 0.1)',
-      type: 'line',
-      fill: false,
-      pointRadius: 0,
-      borderDash: [5, 5]
-    });
-    chartData.datasets.push({
-      label: 'Lower Bound',
-      data: lowerBounds,
-      borderColor: 'rgba(75, 192, 192, 0.3)',
-      backgroundColor: 'rgba(75, 192, 192, 0.1)',
-      type: 'line',
-      fill: '-1', // Fill to previous dataset
-      pointRadius: 0,
-      borderDash: [5, 5]
-    });
-  }
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
+  const modelOptions = ['linear', 'polynomial', 'exponential', 'logarithmic', 'power', 'logistic'];
+  
+  return `<!DOCTYPE html>
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: #f5f5f5;
-        }
-        .container {
-            max-width: ${width + 40}px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            margin: 0 0 20px 0;
-            font-size: 24px;
-            color: #333;
-        }
-        .stats {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f9f9f9;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 14px;
-        }
-        .stats-row {
-            margin: 5px 0;
-        }
-        .controls {
-            margin-bottom: 15px;
-            text-align: right;
-        }
-        .controls button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .controls button:hover {
-            background: #45a049;
-        }
-        .help-text {
-            margin-top: 10px;
-            font-size: 12px;
-            color: #666;
-            text-align: center;
-        }
-        canvas {
-            max-width: 100%;
-        }
-    </style>
+  <title>${title}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+  <style>
+    .container { max-width: ${width}px; margin: 0 auto; }
+    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; padding: 1rem; }
+    .data-table { margin: 1rem 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { padding: 0.5rem; border: 1px solid #ddd; }
+    input[type='number'] { width: 80px; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>${title}</h1>
-        <div class="controls">
-            <button onclick="resetZoom()">Reset Zoom</button>
-        </div>
-        <canvas id="regressionChart" width="${width}" height="${height}"></canvas>
-        <div class="help-text">
-            💡 Tip: Use mouse wheel to zoom, drag to pan. Click "Reset Zoom" to return to original view.
-        </div>
-        <div class="stats">
-            <div class="stats-row"><strong>Model:</strong> ${result.model || 'polynomial'}</div>
-            <div class="stats-row"><strong>R²:</strong> ${result.rSquared.toFixed(6)}</div>
-            <div class="stats-row"><strong>Coefficients:</strong> [${result.coefficients.map(c => c.toFixed(6)).join(', ')}]</div>
-        </div>
+  <div class="container">
+    <div class="controls" hx-target="#chart-container">
+      <div>
+        <label>Model Type:
+          <select name="model" hx-post="/update">
+            ${modelOptions.map(m => `<option ${m === result.model ? 'selected' : ''}>${m}</option>`)}
+          </select>
+        </label>
+      </div>
+      ${result.model === 'polynomial' ? `
+      <div>
+        <label>Degree:
+          <input type="number" name="degree" value="${result.coefficients.length - 1}"
+                 min="1" max="5" hx-post="/update">
+        </label>
+      </div>` : ''}
     </div>
-    <script>
-        const ctx = document.getElementById('regressionChart').getContext('2d');
-        const chartData = ${JSON.stringify(chartData)};
-        
-        const chart = new Chart(ctx, {
-            type: 'scatter',
-            data: chartData,
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        type: 'linear',
-                        position: 'bottom',
-                        title: {
-                            display: true,
-                            text: 'X'
-                        }
-                    },
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Y'
-                        }
-                    }
-                },
-                plugins: {
-                    title: {
-                        display: false
-                    },
-                    legend: {
-                        display: true,
-                        position: 'top'
-                    },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false
-                    },
-                    zoom: {
-                        pan: {
-                            enabled: ${enablePan},
-                            mode: 'xy',
-                            modifierKey: null
-                        },
-                        zoom: {
-                            wheel: {
-                                enabled: ${enableZoom}
-                            },
-                            pinch: {
-                                enabled: ${enableZoom}
-                            },
-                            mode: 'xy',
-                            drag: {
-                                enabled: false
-                            }
-                        },
-                        limits: {
-                            x: {min: 'original', max: 'original'},
-                            y: {min: 'original', max: 'original'}
-                        }
-                    }
-                }
-            }
-        });
 
-        function resetZoom() {
-            chart.resetZoom();
+    <div class="data-table">
+      <table>
+        <thead><tr><th>X</th><th>Y</th><th></th></tr></thead>
+        <tbody hx-target="#chart-container">
+          ${data.map((d, i) => `
+            <tr>
+              <td><input type="number" name="x_${i}" value="${d.x}" step="0.1" hx-post="/update"></td>
+              <td><input type="number" name="y_${i}" value="${d.y}" step="0.1" hx-post="/update"></td>
+              <td><button hx-delete="/point/${i}">×</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <button hx-put="/point" hx-target="tbody">Add Point</button>
+    </div>
+
+    <div id="chart-container">
+      <canvas id="chart" width="${width}" height="${height}"></canvas>
+    </div>
+  </div>
+
+  <script>
+    let chart;
+    function initChart(data, result) {
+      const ctx = document.getElementById('chart').getContext('2d');
+      
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+          datasets: [{
+            label: 'Data Points',
+            data: data,
+            backgroundColor: 'rgb(75, 192, 192)'
+          }, {
+            label: 'Regression Curve',
+            data: generateCurvePoints(result),
+            borderColor: 'rgb(255, 99, 132)',
+            type: 'line',
+            fill: false
+          }]
+        },
+        options: {
+          plugins: {
+            zoom: {
+              zoom: { wheel: { enabled: true }, pinch: { enabled: true } },
+              pan: { enabled: true }
+            }
+          }
         }
-    </script>
+      });
+    }
+
+    function generateCurvePoints(result) {
+      const points = [];
+      for (let x = 0; x <= 10; x += 0.1) {
+        points.push({ x, y: evaluateModel(x, result) });
+      }
+      return points;
+    }
+
+    function evaluateModel(x, result) {
+      switch (result.model) {
+        case 'linear': return result.coefficients[0] + result.coefficients[1] * x;
+        case 'exponential': return result.coefficients[0] * Math.exp(result.coefficients[1] * x);
+        case 'logarithmic': return result.coefficients[0] + result.coefficients[1] * Math.log(x);
+        case 'power': return result.coefficients[0] * Math.pow(x, result.coefficients[1]);
+        case 'polynomial': return result.coefficients.reduce((sum, c, i) => sum + c * Math.pow(x, i), 0);
+      }
+    }
+
+    htmx.on('htmx:afterRequest', (evt) => {
+      if (evt.detail.target.id === 'chart-container') {
+        const response = JSON.parse(evt.detail.xhr.response);
+        initChart(response.data, response.result);
+      }
+    });
+
+    initChart(${JSON.stringify(data)}, ${JSON.stringify(result)});
+  </script>
 </body>
 </html>`;
-
-  return html;
-}
-
-function evaluateRegression(x: number, result: RegressionResult): number {
-  const { coefficients, model = 'polynomial' } = result;
-  
-  switch (model) {
-    case 'exponential':
-      return coefficients[0] * Math.exp(coefficients[1] * x);
-    case 'logarithmic':
-      return coefficients[0] + coefficients[1] * Math.log(x);
-    case 'power':
-      return coefficients[0] * Math.pow(x, coefficients[1]);
-    case 'logistic': {
-      const linear = coefficients[0] + coefficients[1] * x;
-      return 1 / (1 + Math.exp(-linear));
-    }
-    case 'linear':
-    case 'polynomial':
-    default:
-      return coefficients.reduce((sum, coeff, i) => sum + coeff * Math.pow(x, i), 0);
-  }
-}
-
-function findClosestIndex(target: number, values: number[]): number {
-  let closest = 0;
-  let minDiff = Math.abs(values[0] - target);
-  
-  for (let i = 1; i < values.length; i++) {
-    const diff = Math.abs(values[i] - target);
-    if (diff < minDiff) {
-      minDiff = diff;
-      closest = i;
-    }
-  }
-  
-  return closest;
 }
